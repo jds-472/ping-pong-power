@@ -239,6 +239,7 @@
             <div id="rankings-page" class="page active">
                 <div class="nav-buttons">
                     <button class="btn btn-secondary" onclick="showAddGameForm()">Add New Game</button>
+                    <button class="btn" onclick="downloadGamesFile()">Download games.txt</button>
                 </div>
                 
                 <table class="rankings-table">
@@ -337,7 +338,7 @@
                         
                         <div class="form-group">
                             <label for="score">Score (optional):</label>
-                            <input type="text" id="score" placeholder="e.g., 21-19, 21-16">
+                            <input type="text" id="score" placeholder="e.g., 21:19">
                         </div>
                         
                         <button type="submit" class="btn">Add Game</button>
@@ -349,32 +350,103 @@
     </div>
 
     <script>
-        // Sample data - replace with your actual data storage
-        let players = [
-            { name: "Alice Johnson", rating: 1654, wins: 28, losses: 12 },
-            { name: "Bob Smith", rating: 1598, wins: 22, losses: 15 },
-            { name: "Charlie Brown", rating: 1543, wins: 19, losses: 18 },
-            { name: "Diana Prince", rating: 1487, wins: 16, losses: 21 },
-            { name: "Eve Wilson", rating: 1432, wins: 12, losses: 25 }
-        ];
-
-        let games = [
-            { player1: "Alice Johnson", player2: "Bob Smith", winner: "Alice Johnson", score: "21-18, 21-15", date: "2024-01-15" },
-            { player1: "Charlie Brown", player2: "Diana Prince", winner: "Charlie Brown", score: "21-19, 19-21, 21-16", date: "2024-01-14" },
-            { player1: "Alice Johnson", player2: "Charlie Brown", winner: "Alice Johnson", score: "21-14, 21-17", date: "2024-01-13" },
-            { player1: "Bob Smith", player2: "Eve Wilson", winner: "Bob Smith", score: "21-12, 21-9", date: "2024-01-12" },
-            { player1: "Diana Prince", player2: "Eve Wilson", winner: "Diana Prince", score: "21-18, 18-21, 21-19", date: "2024-01-11" }
-        ];
+        // Data will be loaded from games.txt
+        let players = [];
+        let games = [];
 
         let currentPlayer = '';
         let currentOpponent = '';
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
+            loadGamesFromFile();
+        });
+
+        async function loadGamesFromFile() {
+            try {
+                const response = await fetch('games.txt');
+                if (!response.ok) {
+                    throw new Error('games.txt not found - creating empty dataset');
+                }
+                const data = await response.text();
+                parseGamesData(data);
+            } catch (error) {
+                console.log('No games.txt file found, starting with empty data');
+                // Initialize with empty data if file doesn't exist
+                calculatePlayerStats();
+                updateRankings();
+                updateChart();
+                populatePlayerSelects();
+            }
+        }
+
+        function parseGamesData(data) {
+            games = [];
+            const lines = data.trim().split('\n');
+            
+            lines.forEach(line => {
+                if (line.trim()) {
+                    // Parse format: "DD:MM <p1 name> <p2 name> <p1 score>:<p2 score>"
+                    const match = line.match(/^(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+(\d+):(\d+)$/);
+                    if (match) {
+                        const [, date, player1, player2, p1Score, p2Score] = match;
+                        const winner = parseInt(p1Score) > parseInt(p2Score) ? player1 : player2;
+                        
+                        games.push({
+                            player1: player1.trim(),
+                            player2: player2.trim(),
+                            winner: winner,
+                            score: `${p1Score}-${p2Score}`,
+                            date: date,
+                            p1Score: parseInt(p1Score),
+                            p2Score: parseInt(p2Score)
+                        });
+                    }
+                }
+            });
+            
+            calculatePlayerStats();
             updateRankings();
             updateChart();
             populatePlayerSelects();
-        });
+        }
+
+        function calculatePlayerStats() {
+            // Reset players array
+            players = [];
+            const playerMap = new Map();
+            
+            // Initialize all players from games
+            games.forEach(game => {
+                if (!playerMap.has(game.player1)) {
+                    playerMap.set(game.player1, { name: game.player1, rating: 1500, wins: 0, losses: 0 });
+                }
+                if (!playerMap.has(game.player2)) {
+                    playerMap.set(game.player2, { name: game.player2, rating: 1500, wins: 0, losses: 0 });
+                }
+            });
+            
+            // Calculate wins/losses and ratings
+            games.forEach(game => {
+                const p1 = playerMap.get(game.player1);
+                const p2 = playerMap.get(game.player2);
+                
+                if (game.winner === game.player1) {
+                    p1.wins++;
+                    p2.losses++;
+                    // Simple rating calculation - you can modify this
+                    p1.rating += 15;
+                    p2.rating -= 10;
+                } else {
+                    p2.wins++;
+                    p1.losses++;
+                    p2.rating += 15;
+                    p1.rating -= 10;
+                }
+            });
+            
+            players = Array.from(playerMap.values());
+        }
 
         function showPage(pageId) {
             document.querySelectorAll('.page').forEach(page => {
@@ -606,12 +678,12 @@
         document.getElementById('add-game-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const player1 = document.getElementById('player1').value;
-            const player2 = document.getElementById('player2').value;
-            const winner = document.getElementById('winner').value;
-            const score = document.getElementById('score').value || '21:0'; // Default score if not provided
+            const player1 = document.getElementById('player1').value.trim();
+            const player2 = document.getElementById('player2').value.trim();
+            const winnerSelection = document.getElementById('winner').value;
+            const score = document.getElementById('score').value || '21:0';
             
-            if (!player1 || !player2 || !winner) {
+            if (!player1 || !player2 || !winnerSelection) {
                 alert('Please fill in all required fields');
                 return;
             }
@@ -621,19 +693,37 @@
                 return;
             }
             
-            // Parse score to determine actual winner if score is provided
+            // Check for single word names
+            if (player1.includes(' ') || player2.includes(' ')) {
+                alert('Player names must be single words (no spaces)');
+                return;
+            }
+            
+            // Determine winner based on selection
+            const winner = winnerSelection === 'player1' ? player1 : player2;
+            
+            // Parse score
             let p1Score = 0, p2Score = 0;
             if (score.includes(':')) {
                 const scoreParts = score.split(':');
                 p1Score = parseInt(scoreParts[0]) || 0;
                 p2Score = parseInt(scoreParts[1]) || 0;
                 
-                // Override winner based on score if different
-                const actualWinner = p1Score > p2Score ? player1 : player2;
-                if (actualWinner !== winner) {
-                    if (confirm(`Score suggests ${actualWinner} won, but you selected ${winner}. Use score to determine winner?`)) {
-                        winner = actualWinner;
+                // Check if score matches winner selection
+                const scoreWinner = p1Score > p2Score ? player1 : player2;
+                if (scoreWinner !== winner) {
+                    if (confirm(`Score suggests ${scoreWinner} won, but you selected ${winnerSelection === 'player1' ? 'Player 1' : 'Player 2'}. Use score to determine winner?`)) {
+                        winner = scoreWinner;
                     }
+                }
+            } else {
+                // If no proper score format, set default based on winner
+                if (winner === player1) {
+                    p1Score = 21;
+                    p2Score = 0;
+                } else {
+                    p1Score = 0;
+                    p2Score = 21;
                 }
             }
             
@@ -645,7 +735,7 @@
                 player1: player1,
                 player2: player2,
                 winner: winner,
-                score: score.replace(':', '-'),
+                score: `${p1Score}-${p2Score}`,
                 date: dateStr,
                 p1Score: p1Score,
                 p2Score: p2Score
@@ -662,13 +752,12 @@
             // Update displays
             updateRankings();
             updateChart();
-            populatePlayerSelects();
             
             // Show updated games.txt format for user to copy
             showGamesTextFormat();
             
             showPage('rankings-page');
-            alert('Game added successfully! Check console for updated games.txt format.');
+            alert('Game added successfully!');
         });
         
         function showGamesTextFormat() {
