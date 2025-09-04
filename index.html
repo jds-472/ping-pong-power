@@ -211,6 +211,15 @@
             margin-top: 5px;
         }
 
+        .unconfirmed-notice {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #856404;
+        }
+
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -235,11 +244,10 @@
         </div>
         
         <div class="main-content">
-            <!-- Main Rankings Page -->
             <div id="rankings-page" class="page active">
                 <div class="nav-buttons">
                     <button class="btn btn-secondary" onclick="showAddGameForm()">Add New Game</button>
-                    <button class="btn" onclick="downloadGamesFile()">Download games.txt</button>
+                    <button class="btn" onclick="openUnconfirmedGamesList()">View Unconfirmed Games</button>
                 </div>
                 
                 <table class="rankings-table">
@@ -255,8 +263,7 @@
                         </tr>
                     </thead>
                     <tbody id="rankings-tbody">
-                        <!-- Rankings will be populated by JavaScript -->
-                    </tbody>
+                        </tbody>
                 </table>
 
                 <div class="chart-container">
@@ -265,7 +272,6 @@
                 </div>
             </div>
 
-            <!-- Player Games Page -->
             <div id="player-games-page" class="page">
                 <div class="breadcrumb">
                     <a href="#" onclick="showPage('rankings-page')">Rankings</a> > Player Games
@@ -274,17 +280,14 @@
                 <h2 id="player-games-title">Player Games</h2>
                 
                 <div class="player-stats" id="player-stats">
-                    <!-- Player stats will be populated by JavaScript -->
-                </div>
+                    </div>
                 
                 <div id="player-games-list">
-                    <!-- Player games will be populated by JavaScript -->
-                </div>
+                    </div>
                 
                 <button class="btn" onclick="showPage('rankings-page')">Back to Rankings</button>
             </div>
 
-            <!-- Head to Head Page -->
             <div id="head-to-head-page" class="page">
                 <div class="breadcrumb">
                     <a href="#" onclick="showPage('rankings-page')">Rankings</a> > 
@@ -295,17 +298,14 @@
                 <h2 id="head-to-head-title">Head to Head</h2>
                 
                 <div class="player-stats" id="h2h-stats">
-                    <!-- H2H stats will be populated by JavaScript -->
-                </div>
+                    </div>
                 
                 <div id="head-to-head-games">
-                    <!-- H2H games will be populated by JavaScript -->
-                </div>
+                    </div>
                 
                 <button class="btn" onclick="goBackToPlayerGames()">Back to Player Games</button>
             </div>
 
-            <!-- Add Game Form -->
             <div id="add-game-page" class="page">
                 <div class="breadcrumb">
                     <a href="#" onclick="showPage('rankings-page')">Rankings</a> > Add Game
@@ -317,28 +317,25 @@
                     <form id="add-game-form">
                         <div class="form-group">
                             <label for="player1">Player 1:</label>
-                            <select id="player1" required>
-                                <option value="">Select Player 1</option>
-                            </select>
+                            <input type="text" id="player1" placeholder="Enter player name (one word)" required>
                         </div>
                         
                         <div class="form-group">
                             <label for="player2">Player 2:</label>
-                            <select id="player2" required>
-                                <option value="">Select Player 2</option>
-                            </select>
+                            <input type="text" id="player2" placeholder="Enter player name (one word)" required>
                         </div>
                         
                         <div class="form-group">
                             <label for="winner">Winner:</label>
                             <select id="winner" required>
-                                <option value="">Select Winner</option>
+                                <option value="player1" selected>Player 1</option>
+                                <option value="player2">Player 2</option>
                             </select>
                         </div>
                         
                         <div class="form-group">
                             <label for="score">Score (optional):</label>
-                            <input type="text" id="score" placeholder="e.g., 21:19">
+                            <input type="text" id="score" placeholder="e.g., 15:10">
                         </div>
                         
                         <button type="submit" class="btn">Add Game</button>
@@ -350,9 +347,14 @@
     </div>
 
     <script>
-        // Data will be loaded from games.txt
+        // Confirmed games loaded from data.txt (used for calculations)
+        let confirmedGames = [];
+        
+        // Unconfirmed games added locally (not used for calculations)
+        let unconfirmedGames = [];
+        
+        // Players calculated from confirmed games only
         let players = [];
-        let games = [];
 
         let currentPlayer = '';
         let currentOpponent = '';
@@ -364,43 +366,48 @@
 
         async function loadGamesFromFile() {
             try {
-                const response = await fetch('games.txt');
+                const response = await fetch('data.txt');
                 if (!response.ok) {
-                    throw new Error('games.txt not found - creating empty dataset');
+                    throw new Error('data.txt not found - creating empty dataset');
                 }
                 const data = await response.text();
                 parseGamesData(data);
             } catch (error) {
-                console.log('No games.txt file found, starting with empty data');
+                console.log('No data.txt file found, starting with empty data');
                 // Initialize with empty data if file doesn't exist
                 calculatePlayerStats();
                 updateRankings();
                 updateChart();
-                populatePlayerSelects();
             }
         }
 
         function parseGamesData(data) {
-            games = [];
+            confirmedGames = [];
             const lines = data.trim().split('\n');
             
             lines.forEach(line => {
                 if (line.trim()) {
-                    // Parse format: "DD:MM <p1 name> <p2 name> <p1 score>:<p2 score>"
-                    const match = line.match(/^(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+(\d+):(\d+)$/);
-                    if (match) {
-                        const [, date, player1, player2, p1Score, p2Score] = match;
-                        const winner = parseInt(p1Score) > parseInt(p2Score) ? player1 : player2;
+                    // Parse format: "<p1 name> <p2 name> <p1 score>:<p2 score>"
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 3) {
+                        const player1 = parts[0];
+                        const player2 = parts[1];
+                        const scorePart = parts[2];
                         
-                        games.push({
-                            player1: player1.trim(),
-                            player2: player2.trim(),
-                            winner: winner,
-                            score: `${p1Score}-${p2Score}`,
-                            date: date,
-                            p1Score: parseInt(p1Score),
-                            p2Score: parseInt(p2Score)
-                        });
+                        if (scorePart.includes(':')) {
+                            const [p1Score, p2Score] = scorePart.split(':').map(s => parseInt(s));
+                            const winner = p1Score > p2Score ? player1 : player2;
+                            
+                            confirmedGames.push({
+                                player1: player1,
+                                player2: player2,
+                                winner: winner,
+                                score: `${p1Score}-${p2Score}`,
+                                p1Score: p1Score,
+                                p2Score: p2Score,
+                                confirmed: true
+                            });
+                        }
                     }
                 }
             });
@@ -408,7 +415,6 @@
             calculatePlayerStats();
             updateRankings();
             updateChart();
-            populatePlayerSelects();
         }
 
         function calculatePlayerStats() {
@@ -416,8 +422,8 @@
             players = [];
             const playerMap = new Map();
             
-            // Initialize all players from games
-            games.forEach(game => {
+            // Initialize all players from CONFIRMED games only
+            confirmedGames.forEach(game => {
                 if (!playerMap.has(game.player1)) {
                     playerMap.set(game.player1, { name: game.player1, rating: 1500, wins: 0, losses: 0 });
                 }
@@ -426,15 +432,15 @@
                 }
             });
             
-            // Calculate wins/losses and ratings
-            games.forEach(game => {
+            // Calculate wins/losses and ratings from CONFIRMED games only
+            confirmedGames.forEach(game => {
                 const p1 = playerMap.get(game.player1);
                 const p2 = playerMap.get(game.player2);
                 
                 if (game.winner === game.player1) {
                     p1.wins++;
                     p2.losses++;
-                    // Simple rating calculation - you can modify this
+                    // Simple rating calculation
                     p1.rating += 15;
                     p2.rating -= 10;
                 } else {
@@ -462,6 +468,11 @@
             const tbody = document.getElementById('rankings-tbody');
             tbody.innerHTML = '';
             
+            if (players.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #666;">No confirmed games yet. Rankings will appear after data.txt is loaded.</td></tr>';
+                return;
+            }
+            
             players.forEach((player, index) => {
                 const winPercentage = player.wins + player.losses > 0 ? 
                     Math.round((player.wins / (player.wins + player.losses)) * 100) : 0;
@@ -487,6 +498,28 @@
             // Destroy existing chart if it exists
             if (window.myChart) {
                 window.myChart.destroy();
+            }
+            
+            if (players.length === 0) {
+                // Show empty chart
+                window.myChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['No Data'],
+                        datasets: [{
+                            label: 'Power Rating',
+                            data: [0],
+                            backgroundColor: 'rgba(200, 200, 200, 0.5)',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+                return;
             }
             
             const sortedPlayers = [...players].sort((a, b) => b.rating - a.rating);
@@ -519,6 +552,8 @@
             currentPlayer = playerName;
             const player = players.find(p => p.name === playerName);
             
+            if (!player) return;
+            
             document.getElementById('player-games-title').textContent = `${playerName} - Game History`;
             
             // Update player stats
@@ -544,8 +579,8 @@
                 </div>
             `;
             
-            // Get player's games
-            const playerGames = games.filter(game => 
+            // Get player's CONFIRMED games only
+            const playerGames = confirmedGames.filter(game => 
                 game.player1 === playerName || game.player2 === playerName
             );
             
@@ -582,6 +617,10 @@
                 `;
             });
             
+            if (Object.keys(opponents).length === 0) {
+                gamesHTML = '<p style="text-align: center; color: #666;">No confirmed games for this player yet.</p>';
+            }
+            
             document.getElementById('player-games-list').innerHTML = gamesHTML;
             showPage('player-games-page');
         }
@@ -591,8 +630,8 @@
             
             document.getElementById('head-to-head-title').textContent = `${player1} vs ${player2}`;
             
-            // Get head-to-head games
-            const h2hGames = games.filter(game => 
+            // Get head-to-head CONFIRMED games
+            const h2hGames = confirmedGames.filter(game => 
                 (game.player1 === player1 && game.player2 === player2) ||
                 (game.player1 === player2 && game.player2 === player1)
             );
@@ -625,11 +664,14 @@
                 gamesHTML += `
                     <div class="game-record ${winClass}">
                         <strong>Winner: ${game.winner}</strong><br>
-                        Score: ${game.score}<br>
-                        Date: ${game.date}
+                        Score: ${game.score}
                     </div>
                 `;
             });
+            
+            if (h2hGames.length === 0) {
+                gamesHTML += '<p style="text-align: center; color: #666;">No head-to-head games yet.</p>';
+            }
             
             document.getElementById('head-to-head-games').innerHTML = gamesHTML;
             showPage('head-to-head-page');
@@ -643,35 +685,48 @@
             showPage('add-game-page');
         }
 
-        function populatePlayerSelects() {
-            const player1Select = document.getElementById('player1');
-            const player2Select = document.getElementById('player2');
-            const winnerSelect = document.getElementById('winner');
+        function openUnconfirmedGamesList() {
+            let gamesText = '';
             
-            // Clear existing options
-            player1Select.innerHTML = '<option value="">Select Player 1</option>';
-            player2Select.innerHTML = '<option value="">Select Player 2</option>';
-            winnerSelect.innerHTML = '<option value="">Select Winner</option>';
-            
-            players.forEach(player => {
-                const option1 = new Option(player.name, player.name);
-                const option2 = new Option(player.name, player.name);
-                player1Select.add(option1);
-                player2Select.add(option2);
+            // Show all unconfirmed games in the format needed for data.txt
+            unconfirmedGames.forEach(game => {
+                const p1Score = game.p1Score || 0;
+                const p2Score = game.p2Score || 0;
+                gamesText += `${game.player1} ${game.player2} ${p1Score}:${p2Score}\n`;
             });
             
-            // Update winner options when players are selected
-            function updateWinnerOptions() {
-                const p1 = player1Select.value;
-                const p2 = player2Select.value;
-                
-                winnerSelect.innerHTML = '<option value="">Select Winner</option>';
-                if (p1) winnerSelect.add(new Option(p1, p1));
-                if (p2 && p2 !== p1) winnerSelect.add(new Option(p2, p2));
-            }
-            
-            player1Select.addEventListener('change', updateWinnerOptions);
-            player2Select.addEventListener('change', updateWinnerOptions);
+            // Create a new window/tab with the unconfirmed games content
+            const newWindow = window.open('', '_blank');
+            newWindow.document.write(`
+                <html>
+                    <head>
+                        <title>Unconfirmed Games List</title>
+                        <style>
+                            body { 
+                                font-family: monospace; 
+                                white-space: pre-wrap; 
+                                padding: 20px; 
+                                background: #f5f5f5;
+                            }
+                            .header {
+                                font-weight: bold;
+                                margin-bottom: 20px;
+                                color: #333;
+                                font-family: sans-serif;
+                            }
+                            .games-content {
+                                background: white;
+                                padding: 20px;
+                                border-radius: 8px;
+                                border: 1px solid #ddd;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">Unconfirmed Games List</div>
+                        <div class="games-content">${gamesText || 'No unconfirmed games yet - add some games to see them here!'}</div>
+            `);
+            newWindow.document.close();
         }
 
         // Handle form submission
@@ -700,7 +755,7 @@
             }
             
             // Determine winner based on selection
-            const winner = winnerSelection === 'player1' ? player1 : player2;
+            let winner = winnerSelection === 'player1' ? player1 : player2;
             
             // Parse score
             let p1Score = 0, p2Score = 0;
@@ -727,77 +782,25 @@
                 }
             }
             
-            // Add new game
-            const today = new Date();
-            const dateStr = String(today.getDate()).padStart(2, '0') + ':' + String(today.getMonth() + 1).padStart(2, '0');
-            
+            // Add new game to UNCONFIRMED list only
             const newGame = {
                 player1: player1,
                 player2: player2,
                 winner: winner,
                 score: `${p1Score}-${p2Score}`,
-                date: dateStr,
                 p1Score: p1Score,
-                p2Score: p2Score
+                p2Score: p2Score,
+                confirmed: false
             };
             
-            games.push(newGame);
-            
-            // Recalculate all stats
-            calculatePlayerStats();
+            unconfirmedGames.push(newGame);
             
             // Reset form
             document.getElementById('add-game-form').reset();
             
-            // Update displays
-            updateRankings();
-            updateChart();
-            
-            // Show updated games.txt format for user to copy
-            showGamesTextFormat();
-            
             showPage('rankings-page');
-            alert('Game added successfully!');
+            alert('Game added to unconfirmed list! Use "View Unconfirmed Games" to see games awaiting confirmation.');
         });
-        
-        function showGamesTextFormat() {
-            let gamesText = '';
-            games.forEach(game => {
-                const p1Score = game.winner === game.player1 ? 
-                    (game.p1Score || 21) : (game.p1Score || 0);
-                const p2Score = game.winner === game.player2 ? 
-                    (game.p2Score || 21) : (game.p2Score || 0);
-                    
-                gamesText += `${game.date} ${game.player1} ${game.player2} ${p1Score}:${p2Score}\n`;
-            });
-            
-            console.log('Updated games.txt content:');
-            console.log('------------------------');
-            console.log(gamesText);
-            console.log('------------------------');
-            console.log('Copy the above content to your games.txt file');
-        }
-
-        function downloadGamesFile() {
-            let gamesText = '';
-            games.forEach(game => {
-                const p1Score = game.winner === game.player1 ? 
-                    (game.p1Score || 21) : (game.p1Score || 0);
-                const p2Score = game.winner === game.player2 ? 
-                    (game.p2Score || 21) : (game.p2Score || 0);
-                    
-                gamesText += `${game.date} ${game.player1} ${game.player2} ${p1Score}:${p2Score}\n`;
-            });
-            
-            // Create download link
-            const blob = new Blob([gamesText], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'games.txt';
-            a.click();
-            window.URL.revokeObjectURL(url);
-        }
     </script>
 </body>
 </html>
